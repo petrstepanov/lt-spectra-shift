@@ -159,6 +159,8 @@ public:
 			TObjString* objString = (TObjString*)footer->At(i);
 			fprintf(pFile, "%s\n", objString->GetString().Data());
 		}
+
+		fclose(pFile);
 	}
 };
 
@@ -244,6 +246,25 @@ Int_t ltSpectraShift(const char* fileExt = "Spe", const char* dirPath = ""){
 		}
 	}
 
+	// Output means
+	TString meansFilename = "mean-values.txt";
+	const char* meansFilePathName = gSystem->PrependPathName(absDirShiftedPath, meansFilename);
+	FILE* pFile = fopen(meansFilePathName, "w");
+	if (pFile == NULL){
+		std::cout << "Error writing to file \"" << meansFilePathName << "\"." << std::endl;
+	}
+	else {
+		fprintf(pFile, "\"Filename\"\t\"mean\"\t\"shift\"\n");
+		for (UInt_t i = 0; i <= spectra->LastIndex(); i++){
+			Spectrum* spectrum = (Spectrum*) spectra->At(i);
+			if (spectrum){
+				fprintf(pFile, "%s\t%f\t%f\n", spectrum->fileName->Data(), spectrum->mean, spectrum->shift);
+			}
+		}
+		fclose(pFile);
+	}
+
+	// Exit
 	return 0;
 }
 
