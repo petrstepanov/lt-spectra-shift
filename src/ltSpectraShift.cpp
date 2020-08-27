@@ -26,7 +26,8 @@
 
 // Constants
 struct Constants {
-	const UInt_t headerLines = 12;
+	const UInt_t headerLines = 12; // header lines number
+	const Int_t epsilon = 10; // epsilon-bins around the maimum to fit
 };
 Constants constants;
 
@@ -49,7 +50,7 @@ public:
 
 	void init(){
 		// Open file
-		// std::cout << fileNamePath->Data() << std::endl; // test
+		std::cout << fileNamePath->Data() << std::endl; // test
 		std::ifstream inFile(fileNamePath->Data());
 		if (!inFile) {
 			std::cout << "File \"" << fileNamePath->Data() << "\" not found." << std::endl;
@@ -62,7 +63,7 @@ public:
 			std::getline(inFile, sLine);
 			TObjString* line = new TObjString(sLine.c_str());
 			header->Add(line);
-			// std::cout << line->GetString().Data(); // test
+			std::cout << line->GetString().Data(); // test
 		}
 
 		// Get number of lines (last number in last header line)
@@ -74,7 +75,36 @@ public:
 		std::cout << "Numer of entries in file: " << nEntries << std::endl;
 
 		// Read bins and initialize the histogram
-		// ...
+		TString histName = TString::Format("hist_%s", fileNamePath->Data());
+		TH1I* hist = new TH1I(histName, "", nEntries, 0, nEntries);
+		for (UInt_t i = 0; i < nEntries; i++){
+			std::string sLine = "";
+			std::getline(inFile, sLine);
+			std::istringstream streamLine(sLine);
+			Int_t count;
+			streamLine >> count;
+			hist->SetBinContent(i+1, count);
+		}
+
+		// Read footer
+		std::string sLine = "";
+		while (getline(inFile, sLine)) {
+			TObjString* line = new TObjString(sLine.c_str());
+			footer->Add(line);
+			std::cout << line->GetString().Data(); // test
+		}
+
+		// Find the mean
+		Double_t histMaxX = hist->GetXaxis()->GetBinCenter(hist->GetMaximumBin());
+		Double_t epsilon = constants.epsilon;
+		TString funcName = TString::Format("func_%s", fileNamePath->Data());
+		TF1 *func = new TF1(funcName.Data(), "gaus", histMaxX-epsilon, histMaxX+epsilon);
+		hist->Fit(func,"SR");
+		Double_t par[3];
+		func->GetParameters(&par[0]);
+		// hist->GetXaxis()->SetRangeUser(histMaxX-epsilon, histMaxX+epsilon);
+		// hist->Draw();
+		mean = par[1];
 	}
 };
 
@@ -123,6 +153,7 @@ Int_t ltSpectraShift(const char* fileExt = "Spe", const char* dirPath = ""){
 		}
 	}
 
+	// Fit histograms
 	return 0;
 }
 
