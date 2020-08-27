@@ -60,8 +60,8 @@ public:
 		shift = 0;
 	}
 
-	TString* fileName;
-	TString* fileNamePath;
+	const TString* fileName;
+	const TString* fileNamePath;
 	TList* header;
 	TList* footer;
 	TH1* histogram;
@@ -71,6 +71,7 @@ public:
 
 	void init(){
 		// Open file
+		std::cout << fileName->Data() << std::endl; // test
 		std::cout << fileNamePath->Data() << std::endl; // test
 		std::ifstream inFile(fileNamePath->Data());
 		if (!inFile) {
@@ -189,6 +190,8 @@ Int_t ltSpectraShift(const char* fileExt = "Spe", const char* dirPath = ""){
 			TString fileName = file->GetName();
 			const char* absDirFilePath = gSystem->PrependPathName(absDirPath, fileName);
 			Spectrum* spectrum = new Spectrum(absDirFilePath, file->GetName());
+			std::cout << absDirFilePath << std::endl;
+			std::cout << file->GetName() << std::endl;
 			spectra->Add(spectrum);
 			// file->Print("V");
 		}
@@ -241,7 +244,8 @@ Int_t ltSpectraShift(const char* fileExt = "Spe", const char* dirPath = ""){
 		// List file info
 		Spectrum* spectrum = (Spectrum*) spectra->At(i);
 		if (spectrum){
-			const char* absDirShiftedFilePath = gSystem->PrependPathName(absDirShiftedPath, *(spectrum->fileName));
+			TString fileName = spectrum->fileName->Data();
+			const char* absDirShiftedFilePath = gSystem->PrependPathName(absDirShiftedPath, fileName);
 			spectrum->saveShiftedHist(absDirShiftedFilePath);
 		}
 	}
