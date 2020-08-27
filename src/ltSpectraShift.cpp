@@ -35,12 +35,12 @@ Double_t getBinContentShifted(TH1* hist, Int_t bin, Double_t shift){
 	Double_t ratio = shift - (Double_t)intShift;
 
 	// Add contents from the left bin
-	if (bin-intShift-1 >= 1 && bin-intShift-1 <= hist->GetXaxis()->GetNbins()){
+	if (bin+intShift+1 >= 1 && bin+intShift+1 <= hist->GetXaxis()->GetNbins()){
 		value += ratio*(Double_t)hist->GetBinContent(bin-intShift-1);
 	}
 
 	// Add contents from the right bin
-	if (bin-intShift >= 1 && bin-intShift <= hist->GetXaxis()->GetNbins()){
+	if (bin+intShift >= 1 && bin+intShift <= hist->GetXaxis()->GetNbins()){
 		value += (1-ratio)*(Double_t)hist->GetBinContent(bin-intShift);
 	}
 	return value;
@@ -52,6 +52,7 @@ public:
 	Spectrum(const char* fNamePath, const char* fName) : TObject() {
 		fileName = new TString(fName);
 		fileNamePath = new TString(fNamePath);
+		// std::cout << fileName->Data() << std::endl;
 		header = new TList();
 		footer = new TList();
 		histogram = new TH1I();
@@ -181,21 +182,28 @@ Int_t ltSpectraShift(const char* fileExt = "Spe", const char* dirPath = ""){
 	// Select files from directory with provided extension
 	TIter next(files);
 	TSystemFile *file;
+	TList* filesList = new TList();
 	const char* workingDir = gSystem->WorkingDirectory();
 	while ((file=(TSystemFile*)next())) {
 		TString fName = file->GetName();
 		if (!file->IsDirectory() && fName.EndsWith(fileExt)) {
-			TString dirPathTString = dirPath;
-			const char* absDirPath = gSystem->PrependPathName(workingDir, dirPathTString);
-			TString fileName = file->GetName();
-			const char* absDirFilePath = gSystem->PrependPathName(absDirPath, fileName);
-			Spectrum* spectrum = new Spectrum(absDirFilePath, file->GetName());
-			std::cout << absDirFilePath << std::endl;
-			std::cout << file->GetName() << std::endl;
-			spectra->Add(spectrum);
-			// file->Print("V");
+			TObjString* fNameObjString = new TObjString(fName.Data());
+			filesList->Add(fNameObjString);
 		}
 	}
+
+	filesList->Sort(kTRUE);
+	for (UInt_t i=0; i <= filesList->LastIndex(); i++){
+		TString dirPathTString = dirPath;
+		const char* absDirPath = gSystem->PrependPathName(workingDir, dirPathTString);
+		TString fileName = ((TObjString*)filesList->At(i))->GetString().Data();
+		const char* absDirFilePath = gSystem->PrependPathName(absDirPath, fileName);
+		Spectrum* spectrum = new Spectrum(absDirFilePath, ((TObjString*)filesList->At(i))->GetString().Data());
+		// std::cout << absDirFilePath << std::endl;
+		// std::cout << fileName.Data() << std::endl;
+		spectra->Add(spectrum);
+	}
+
 
 	// Exit if no files with certain extension were found
 	if (spectra->LastIndex() == 0){
@@ -244,8 +252,8 @@ Int_t ltSpectraShift(const char* fileExt = "Spe", const char* dirPath = ""){
 		// List file info
 		Spectrum* spectrum = (Spectrum*) spectra->At(i);
 		if (spectrum){
-			TString fileName = spectrum->fileName->Data();
-			const char* absDirShiftedFilePath = gSystem->PrependPathName(absDirShiftedPath, fileName);
+			TString fN = spectrum->fileName->Data();
+			const char* absDirShiftedFilePath = gSystem->PrependPathName(absDirShiftedPath, fN);
 			spectrum->saveShiftedHist(absDirShiftedFilePath);
 		}
 	}
