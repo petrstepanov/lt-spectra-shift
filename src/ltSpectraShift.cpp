@@ -44,14 +44,15 @@ Double_t getBinContentShifted(TH1* hist, Int_t bin, Double_t shift){
 	Double_t ratio = shift - (Double_t)intShift;
 
 	// Add contents from the left bin
+	if (bin+intShift >= 1 && bin+intShift <= hist->GetXaxis()->GetNbins()){
+		value += (1-ratio)*(Double_t)hist->GetBinContent(bin-intShift);
+	}
+
+	// Add contents from the right bin
 	if (bin+intShift+1 >= 1 && bin+intShift+1 <= hist->GetXaxis()->GetNbins()){
 		value += ratio*(Double_t)hist->GetBinContent(bin-intShift-1);
 	}
 
-	// Add contents from the right bin
-	if (bin+intShift >= 1 && bin+intShift <= hist->GetXaxis()->GetNbins()){
-		value += (1-ratio)*(Double_t)hist->GetBinContent(bin-intShift);
-	}
 	return value;
 }
 
