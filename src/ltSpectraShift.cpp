@@ -22,6 +22,15 @@ struct Constants {
 	const UInt_t headerLines = 12; // header lines number
 	const Int_t epsilon = 10; // epsilon-bins around the maimum to fit
 	TString shiftedFolderName = "shifted";
+	Double_t channelWidth = 0.006165;
+	Int_t minChannel = 0;
+	Int_t maxChannel = 0;
+ 	Int_t keyValueStart = 2;
+	Int_t keyValueIncrement = 4;
+ 	Int_t keyValueCurrent = 0;
+	Double_t avgResFuncWidth = 0.3;
+	const char* fileExt = "Spe";
+	Bool_t flag = kTRUE;
 };
 Constants constants;
 
@@ -122,11 +131,37 @@ public:
 		Double_t epsilon = constants.epsilon;
 		TString funcName = TString::Format("func_%s", fileName->Data());
 		TF1 *func = new TF1(funcName.Data(), "gaus", histMaxX-epsilon, histMaxX+epsilon);
-		histogram->Fit(func,"RN"); // R = use function range; N - not draw
+		if (constants.flag){
+			TCanvas* c = new TCanvas("canvas", "",1024, 600);
+			c->SetLogy();
+			histogram->Fit(func, "R"); // R = use function range; N - not draw
+			gSystem->ProcessEvents();
+		}
+		else {
+			histogram->Fit(func, "RN"); // R = use function range; N - not draw
+		}
 		Double_t par[3];
 		func->GetParameters(&par[0]);
-		// hist->GetXaxis()->SetRangeUser(histMaxX-epsilon, histMaxX+epsilon);
-		// hist->Draw();
+
+		// Draw first spectrum and ask for chMin, chMax and channelWidth
+		if (constants.flag){
+			constants.minChannel = histogram->GetXaxis()->GetXmin();
+			constants.maxChannel = histogram->GetXaxis()->GetXmax();
+			histogram->Draw();
+			std::cout << "Input minimum channel (default " << constants.minChannel << "): " << std::endl;
+			std::cin >> constants.minChannel;
+			std::cout << "Input maximum channel (default " << constants.maxChannel << "): " << std::endl;
+			std::cin >> constants.maxChannel;
+			std::cout << "Input channel width (default " << constants.channelWidth << "): " << std::endl;
+			std::cin >> constants.channelWidth;
+			std::cout << "Input start key value (default " << constants.keyValueStart << "): " << std::endl;
+			std::cin >> constants.keyValueStart;
+			std::cout << "Input key value increment (default " << constants.keyValueIncrement << "): " << std::endl;
+			std::cin >> constants.keyValueIncrement;
+
+			constants.keyValueCurrent = constants.keyValueStart;
+			constants.flag = kFALSE;
+		}
 		mean = par[1];
 	}
 
@@ -139,7 +174,7 @@ public:
 		}
 	}
 
-	void saveShiftedHist(const char* shiftedFileNamePath){
+	void saveShiftedHistMaestro(const char* shiftedFileNamePath){
 		FILE* pFile = fopen(shiftedFileNamePath, "w");
 		if (pFile == NULL) {
 			std::cout << "Error writing to file \"" << shiftedFileNamePath << "\"." << std::endl;
@@ -164,11 +199,56 @@ public:
 
 		fclose(pFile);
 	}
+
+	void saveShiftedHistLT(const char* shiftedFileNamePath){
+		FILE* pFile = fopen(shiftedFileNamePath, "w");
+		if (pFile == NULL) {
+			std::cout << "Error writing to file \"" << shiftedFileNamePath << "\"." << std::endl;
+		}
+
+		// Write filename
+		fprintf(pFile, "%s %d\n", fileName->Data(), constants.keyValueCurrent);
+
+		// Write channel width
+		fprintf(pFile, "%f\n", constants.channelWidth);
+
+		// Write key value
+		fprintf(pFile, "%d\n", constants.keyValueCurrent);
+
+		// Write default fwhm
+		fprintf(pFile, "%.1f\n", constants.avgResFuncWidth);
+
+		// Write tabed histogram data
+		Int_t counter = 0;
+		for (UInt_t i = 1; i <= histogramShifted->GetXaxis()->GetNbins(); i++){
+			// Write channel count
+			if (i >= constants.minChannel && i < constants.maxChannel){
+				// Write first tab if needed
+				if (counter == 0){
+					fprintf(pFile, "\t");
+				}
+
+				fprintf(pFile, "%f\t", histogramShifted->GetBinContent(i));
+				counter++;
+			}
+			// Reset counter after 10 times
+			if (counter == 10){
+				counter = 0;
+				fprintf(pFile, "\n");
+			}
+		}
+		fclose(pFile);
+
+		// Increment key value for the next spectrum
+		constants.keyValueCurrent += constants.keyValueIncrement;
+	}
 };
 
 TList* spectra = new TList();
+Spectrum* spectrumSum;
 
-Int_t ltSpectraShift(const char* fileExt = "Spe", const char* dirPath = ""){
+
+Int_t ltSpectraShift(const char* dirPath = ""){
 	// Open the directory for scanning
 	TSystemDirectory* dir = new TSystemDirectory(dirPath, dirPath);
 	TList *files = dir->GetListOfFiles();
@@ -186,12 +266,19 @@ Int_t ltSpectraShift(const char* fileExt = "Spe", const char* dirPath = ""){
 	const char* workingDir = gSystem->WorkingDirectory();
 	while ((file=(TSystemFile*)next())) {
 		TString fName = file->GetName();
-		if (!file->IsDirectory() && fName.EndsWith(fileExt)) {
+		if (!file->IsDirectory() && fName.EndsWith(constants.fileExt)) {
 			TObjString* fNameObjString = new TObjString(fName.Data());
 			filesList->Add(fNameObjString);
 		}
 	}
 
+	// Exit if no files with certain extension were found
+	if (filesList->LastIndex() == 0){
+		std::cout << "Directory \"" << dirPath << "\" has no *." << constants.fileExt << " files." << std::endl;
+		return 1;
+	}
+
+	// Sort filenames and initialize the spectra
 	filesList->Sort(kTRUE);
 	for (UInt_t i=0; i <= filesList->LastIndex(); i++){
 		TString dirPathTString = dirPath;
@@ -199,16 +286,13 @@ Int_t ltSpectraShift(const char* fileExt = "Spe", const char* dirPath = ""){
 		TString fileName = ((TObjString*)filesList->At(i))->GetString().Data();
 		const char* absDirFilePath = gSystem->PrependPathName(absDirPath, fileName);
 		Spectrum* spectrum = new Spectrum(absDirFilePath, ((TObjString*)filesList->At(i))->GetString().Data());
-		// std::cout << absDirFilePath << std::endl;
-		// std::cout << fileName.Data() << std::endl;
 		spectra->Add(spectrum);
-	}
 
-
-	// Exit if no files with certain extension were found
-	if (spectra->LastIndex() == 0){
-		std::cout << "Directory \"" << dirPath << "\" has no *." << fileExt << " files." << std::endl;
-		return 1;
+		// Initialize sumSpectrum
+		if (i==0){
+			TString sumFileName = TString::Format("_%s", ((TObjString*)filesList->At(i))->GetString().Data());
+			spectrumSum = new Spectrum("", sumFileName.Data());
+		}
 	}
 
 	// Initialize spectra - import file header, histogram and footer, find mean
@@ -217,6 +301,10 @@ Int_t ltSpectraShift(const char* fileExt = "Spe", const char* dirPath = ""){
 		Spectrum* spectrum = (Spectrum*) spectra->At(i);
 		if (spectrum){
 			spectrum->init();
+
+			if (i==0){
+				spectrumSum->histogram=new TH1I("sumHist", "sumHist", spectrum->histogram->GetXaxis()->GetNbins(), 0, spectrum->histogram->GetXaxis()->GetNbins());
+			}
 		}
 	}
 
@@ -231,7 +319,7 @@ Int_t ltSpectraShift(const char* fileExt = "Spe", const char* dirPath = ""){
 		}
 	}
 
-	// Calculate shifts and export shifted histogram
+	// Calculate shifts and fill shifted histograms
 	for (UInt_t i = 0; i <= spectra->LastIndex(); i++){
 		// List file info
 		Spectrum* spectrum = (Spectrum*) spectra->At(i);
@@ -241,6 +329,16 @@ Int_t ltSpectraShift(const char* fileExt = "Spe", const char* dirPath = ""){
 		}
 	}
 
+	// Sum shifted histograms
+	spectrumSum->calcShiftedHist();
+	spectrumSum->histogramShifted->Reset();
+	for (UInt_t i = 0; i <= spectra->LastIndex(); i++){
+		// List file info
+		Spectrum* spectrum = (Spectrum*) spectra->At(i);
+		if (spectrum){
+			spectrumSum->histogramShifted->Add(spectrum->histogramShifted);
+		}
+	}
 	// Create output directory
 	TString dirPathTString = dirPath;
 	const char* absDirPath = gSystem->PrependPathName(workingDir, dirPathTString);
@@ -254,9 +352,19 @@ Int_t ltSpectraShift(const char* fileExt = "Spe", const char* dirPath = ""){
 		if (spectrum){
 			TString fN = spectrum->fileName->Data();
 			const char* absDirShiftedFilePath = gSystem->PrependPathName(absDirShiftedPath, fN);
-			spectrum->saveShiftedHist(absDirShiftedFilePath);
+			spectrum->saveShiftedHistMaestro(absDirShiftedFilePath);
+			TString* absDirShiftedFilePathLT = new TString(absDirShiftedFilePath);
+			absDirShiftedFilePathLT->ReplaceAll(".Spe", ".txt");
+			spectrum->saveShiftedHistLT(absDirShiftedFilePathLT->Data());
 		}
 	}
+
+	// Output shifted histogram
+	TString sumFileName = spectrumSum->fileName->Data();
+	const char* absDirShiftedFileSumPath = gSystem->PrependPathName(absDirShiftedPath, sumFileName);
+	TString* absDirShiftedFileSumPathLT = new TString(absDirShiftedFileSumPath);
+	absDirShiftedFileSumPathLT->ReplaceAll(".Spe", ".txt");
+	spectrumSum->saveShiftedHistLT(absDirShiftedFileSumPathLT->Data());
 
 	// Output means
 	TString meansFilename = "mean-values.txt";
